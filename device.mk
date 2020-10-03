@@ -476,7 +476,8 @@ PRODUCT_PACKAGES += \
     wpa_supplicant.conf \
     libcurl \
     libQWiFiSoftApCfg \
-    tcpdump
+    tcpdump \
+    WifiOverlay
 
 # Wifi Symlinks
 PRODUCT_PACKAGES += \
