@@ -43,3 +43,13 @@ allow servicemanager hal_sensors_default:process getattr;
 #allow servicemanager sensors:file { open read };
 #allow servicemanager sensors:process getattr;
 
+allow servicemanager qseeproxy:dir search;
+allow servicemanager qseeproxy:file { open read };
+allow servicemanager netmgrd:dir search;
+allow servicemanager netmgrd:file { open read };
+allow servicemanager netmgrd:process getattr;
+allow servicemanager qseeproxy:process getattr;
+
+typeattribute servicemanager system_executes_vendor_violators;
+
+allow servicemanager vendor_file:file { getattr read };

@@ -23,5 +23,18 @@
 
 #allow mm-qcamerad hal_sensors_default:unix_stream_socket { read write };
 
-#allow mm-qcamerad hal_configstore_ISurfaceFlingerConfigs:hwservice_manager find;
-#allow mm-qcamerad hal_configstore_default:binder call;
+allow mm-qcamerad hal_configstore_default:binder call;
+
+allow mm-qcamerad unlabeled:dir search;
+allow mm-qcamerad unlabeled:file { open read };
+allow mm-qcamerad vendor_data_file:dir read;
+allow mm-qcamerad mnt_vendor_file:file { getattr open read };
+
+typeattribute mm-qcamerad binder_in_vendor_violators;
+
+allow mm-qcamerad binder_device:chr_file { ioctl open read write };
+
+typeattribute mm-qcamerad data_between_core_and_vendor_violators;
+
+allow mm-qcamerad camera_data_file:dir search;
+allow mm-qcamerad persist_camera_file:dir { add_name search write };

@@ -4,3 +4,6 @@ get_prop(surfaceflinger, diag_prop);
 
 binder_call(surfaceflinger, hwservicemanager)
 
+typeattribute surfaceflinger system_executes_vendor_violators;
+
+allow surfaceflinger vendor_file:file { getattr read };
