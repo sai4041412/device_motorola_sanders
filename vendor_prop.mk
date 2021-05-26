@@ -2,11 +2,12 @@
 # vendor props for sanders
 #
 
-# ADB on boot
-    persist.service.adb.enable=1
-    persist.service.debuggable=1
-    persist.sys.usb.config=mtp,adb
-    ro.adb.secure=0
+# ADB
+persist.sys.usb.config=diag,adb
+sys.usb.config=diag,adb
+ro.adb.secure=0
+ro.secure=0
+ro.debuggable=1
 
 # Audio
 PRODUCT_PROPERTY_OVERRIDES += \
