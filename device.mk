@@ -147,6 +147,7 @@ PRODUCT_PACKAGES += \
     libtinyxml \
     libdisplayconfig \
     libqdMetaData.system \
+    libqdMetaData.vendor \
     vendor.display.config@1.0 \
     libhwbinder \
     libhwbinder.vendor \
