@@ -158,9 +158,7 @@ PRODUCT_PACKAGES += \
     libqdMetaData.system \
     libqdMetaData.vendor \
     libhwbinder \
-    libhwbinder.vendor \
-    libhidltransport \
-    libhidltransport.vendor
+    libhwbinder.vendor
 
 PRODUCT_PACKAGES += \
     vendor.display.color@1.0-service \
