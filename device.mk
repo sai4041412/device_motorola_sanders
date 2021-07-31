@@ -156,6 +156,7 @@ PRODUCT_PACKAGES += \
     libtinyxml \
     libdisplayconfig \
     libqdMetaData.system \
+    libqdMetaData.vendor \
     libhwbinder \
     libhwbinder.vendor \
     libhidltransport \
