@@ -63,13 +63,7 @@ on late-fs
     start servicemanager
     start surfaceflinger
     start bootanim
-
-    # Wait for hwservicemanager ready since fsck might be triggered in mount_all --late
-    # In such case, init won't responce the property_set from hwservicemanager and then
-    # cause services for bootanim not running.
-    wait_for_prop hwservicemanager.ready true
-
-    # Mount RW partitions which need run fsck
+    # mount RW partitions which need run fsck
     mount_all /vendor/etc/fstab.qcom --late
 
 on init
@@ -873,6 +867,7 @@ on property:persist.sys.ssr.restart_level=*
 on charger
     wait /dev/block/bootdevice/by-name/system
     mount ext4 /dev/block/bootdevice/by-name/system /system ro barrier=1
+    #load_system_props
     setprop sys.usb.configfs 0
     setprop persist.sys.usb.config mass_storage
     write /sys/class/leds/white/trigger "battery-full"
