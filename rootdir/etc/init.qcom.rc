@@ -27,7 +27,6 @@
 
 import /vendor/etc/init/hw/init.mmi.rc
 import /vendor/etc/init/hw/init.sanders.rc
-import /vendor/etc/init/hw/init.spectrum.rc
 import /vendor/etc/init/hw/init.safailnet.rc
 
 on early-init
@@ -44,13 +43,24 @@ on early-init
     write /sys/block/zram0/use_dedup 1
     write /proc/sys/vm/page-cluster 0
 
+on init
+    # Create cgroup mount point for memory
+    mkdir /sys/fs/cgroup/memory/bg 0750 root system
+    write /sys/fs/cgroup/memory/bg/memory.swappiness 120
+    write /sys/fs/cgroup/memory/bg/memory.move_charge_at_immigrate 1
+    chown root system /sys/fs/cgroup/memory/bg/tasks
+    chmod 0660 /sys/fs/cgroup/memory/bg/tasks
+
+    write /sys/module/qpnp_rtc/parameters/poweron_alarm 1
+
 on fs
     wait /dev/block/platform/soc/${ro.boot.bootdevice}
     symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
+    mount_all /vendor/etc/fstab.qcom --early
+    write /proc/sys/vm/swappiness 100
 
     # Start HW service manager early
     start hwservicemanager
-    mount_all /vendor/etc/fstab.qcom --early
 
     chown root system /mnt/vendor/persist
     chmod 0771 /mnt/vendor/persist
@@ -63,17 +73,17 @@ on late-fs
     start servicemanager
     start surfaceflinger
     start bootanim
-
-    # Wait for hwservicemanager ready since fsck might be triggered in mount_all --late
-    # In such case, init won't responce the property_set from hwservicemanager and then
-    # cause services for bootanim not running.
-    wait_for_prop hwservicemanager.ready true
+    start vendor.configstore-hal
+    start vendor.gralloc-2-0
 
     # Mount RW partitions which need run fsck
     mount_all /vendor/etc/fstab.qcom --late
 
-on init
-    write /sys/module/qpnp_rtc/parameters/poweron_alarm 1
+    chown root system /mnt/vendor/persist
+    chmod 0771 /mnt/vendor/persist
+    mkdir /mnt/vendor/persist/data 0700 system system
+    mkdir /mnt/vendor/persist/bms 0700 root system
+    restorecon_recursive /mnt/vendor/persist
 
     # Set permissions for persist partition
     mkdir /persist 0771 root system
@@ -85,11 +95,6 @@ on init
     write /sys/fs/cgroup/memory/bg/memory.move_charge_at_immigrate 1
     chown root system /sys/fs/cgroup/memory/bg/tasks
     chmod 0660 /sys/fs/cgroup/memory/bg/tasks
-
-    # set default schedTune value for foreground/top-app (only affects EAS)
-    write /dev/stune/foreground/schedtune.prefer_idle 1
-    write /dev/stune/top-app/schedtune.prefer_idle 1
-    write /dev/stune/top-app/schedtune.boost 10
 
 on early-boot
     # set RLIMIT_MEMLOCK to 64MB
@@ -120,16 +125,8 @@ on early-boot
     chmod 0664 /mnt/vendor/persist/sensors/sensors_settings
 
 on boot
-    # access permission for secure touch
-    chmod 0660 /sys/devices/soc/78b7000.i2c/i2c-3/3-0020/input/input0/secure_touch_enable
-    chmod 0440 /sys/devices/soc/78b7000.i2c/i2c-3/3-0020/input/input0/secure_touch
-    chown system drmrpc /sys/devices/soc/78b7000.i2c/i2c-3/3-0020/input/input0/secure_touch_enable
-    chown system drmrpc /sys/devices/soc/78b7000.i2c/i2c-3/3-0020/input/input0/secure_touch
-
-    # fpc1020 proximity state support
     chmod 0660 /sys/devices/soc/7af8000.spi/spi_master/spi8/spi8.0/proximity_state
     chown system system /sys/devices/soc/7af8000.spi/spi_master/spi8/spi8.0/proximity_state
-
     chown bluetooth bluetooth /sys/module/bluetooth_power/parameters/power
     chown bluetooth net_bt /sys/class/rfkill/rfkill0/type
     chown bluetooth net_bt /sys/class/rfkill/rfkill0/state
@@ -328,12 +325,13 @@ on boot
     write /dev/cpuset/foreground/cpus 0-3,6-7
     write /dev/cpuset/background/cpus 0-3
     write /dev/cpuset/restricted/cpus 0-3
+    write /dev/cpuset/top-app/boost/cpus 4-7
     write /dev/cpuset/system-background/cpus 0-3
 
     # add a cpuset for the camera daemon
     # we want all cores for camera
     mkdir /dev/cpuset/camera-daemon
-    write /dev/cpuset/camera-daemon/cpus 0-7
+    write /dev/cpuset/camera-daemon/cpus 0-3
     write /dev/cpuset/camera-daemon/mems 0
     chown system system /dev/cpuset/camera-daemon
     chown system system /dev/cpuset/camera-daemon/tasks
@@ -360,6 +358,9 @@ on post-fs-data
     mkdir /data/misc/hbtp 0750 system system
 
     mkdir /data/vendor/misc 01771 system system
+
+    # Create directory used for dump collection
+    mkdir /data/vendor/ssrdump 0770 root system
 
     # Create directory used by display clients
     mkdir /data/vendor/display 0770 system graphics
@@ -399,7 +400,7 @@ on post-fs-data
     mkdir /data/vendor/ramdump/bluetooth 0770 bluetooth bluetooth
 
     # Create the directories used by the Wireless subsystem
-    mkdir /data/vendor/wifi 0770 wifi wifi
+    mkdir /data/vendor/wifi 0771 wifi wifi
     mkdir /data/vendor/wifi/sockets 0770 wifi wifi
     mkdir /data/vendor/wifi/hostapd 0770 wifi wifi
     mkdir /data/vendor/wifi/hostapd/ctrl 0770 wifi wifi
@@ -423,6 +424,10 @@ on post-fs-data
     #create ipacm log dir
     mkdir /data/vendor/ipa 0770 radio radio
     chmod 0770 /data/vendor/ipa
+
+    #Create QTI dir for logs
+    mkdir /data/vendor/dataqti 0770 radio radio
+    chmod 0770 /data/vendor/dataqti
 
     # Create the directories used by CnE subsystem
     mkdir /data/connectivity 0771 system system
@@ -485,6 +490,9 @@ on post-fs-data
     # Create /data/vendor/time folder for time-services
     mkdir /data/vendor/time/ 0700 system system
 
+    # Create /data/vendor/time folder for time-services
+    mkdir /data/vendor/time/ 0700 system system
+
     #Create a folder for SRS to be able to create a usercfg file
     #mkdir /data/data/media 0770 media media
 
@@ -528,8 +536,8 @@ on post-fs-data
 service charger /system/bin/charger
     class charger
     user system
-    capabilities SYS_BOOT
     group system graphics input
+    capabilities SYS_BOOT
     seclabel u:r:charger:s0
 
 # Allow usb charging to be disabled peristently
@@ -552,6 +560,12 @@ service vendor.thermal-engine /vendor/bin/thermal-engine
    socket thermal-recv-client stream 0660 system system
    socket thermal-recv-passive-client stream 0666 system system
    socket thermal-send-rule stream 0660 system system
+   group root
+   writepid /dev/cpuset/system-background/tasks
+
+service vendor.time_daemon /vendor/bin/time_daemon
+   class late_start
+   user root
    group root
    writepid /dev/cpuset/system-background/tasks
 
@@ -599,11 +613,11 @@ service vendor.adsprpcd /vendor/bin/adsprpcd
     user media
     group media
 
-#service vendor.energy-awareness /vendor/bin/energy-awareness
-#    class main
-#    user root
-#    group system
-#    oneshot
+service energy-awareness /vendor/bin/energy-awareness
+    class main
+    user root
+    group system
+    oneshot
 
 service vendor.irsc_util /vendor/bin/irsc_util "/vendor/etc/sec_config"
     class core
@@ -653,6 +667,26 @@ service vendor.rmt_storage /vendor/bin/rmt_storage
     shutdown critical
     writepid /dev/cpuset/system-background/tasks
 
+on property:wc_transport.start_fmhci=true
+    start fmhal_service
+
+on property:wc_transport.start_fmhci=false
+    stop fmhal_service
+
+service hciattach system/vendor/bin/hci_qcomm_init -e
+    class late_start
+    user bluetooth
+    group bluetooth net_bt_admin
+    disabled
+    oneshot
+
+on property:vendor.bluetooth.hciattach=true
+    start hciattach
+    setprop vendor.bluetooth.status on
+
+on property:vendor.bluetooth.hciattach=false
+    setprop vendor.bluetooth.status off
+
 service start_hci_filter /system/bin/wcnss_filter
     class late_start
     user bluetooth
@@ -669,6 +703,13 @@ service hci_filter_root /system/bin/wcnss_filter
     class late_start
     user bluetooth
     group bluetooth diag oem_2950
+    disabled
+
+#net_admin capability needed to write rfkill sysfs entry
+service fmhal_service /vendor/bin/fmhal_service
+    class late_start
+    user bluetooth
+    group bluetooth net_bt_admin net_admin
     disabled
 
 service vendor.tftp_server /vendor/bin/tftp_server
@@ -767,7 +808,7 @@ service iprenew_wigig0 /system/bin/dhcpcd -n
     disabled
     oneshot
 
-on property:ro.hw.dtv=true
+on property:ro.boot.hardware.sku=XT1802
     insmod /vendor/lib/modules/isdbt.ko
 
 service wlan_logging /system/bin/cnss_diag -q -f
@@ -777,14 +818,14 @@ service wlan_logging /system/bin/cnss_diag -q -f
     disabled
     oneshot
 
-#service cnss-daemon /vendor/bin/cnss-daemon -n -l
-#    class late_start
-#    user system
-#    group system inet net_admin wifi
-#    capabilities NET_ADMIN
-#
-#on property:sys.shutdown.requested=*
-#    stop cnss-daemon
+service cnss-daemon /vendor/bin/cnss-daemon -n -l
+    class late_start
+    user system
+    group system inet net_admin wifi
+    capabilities NET_ADMIN
+
+on property:sys.powerctl=*
+    stop cnss-daemon
 
 service dhcpcd_bt-pan /system/bin/dhcpcd -BKLG
     class late_start
@@ -826,7 +867,6 @@ service vendor.msm_irqbalance /vendor/bin/msm_irqbalance -f /vendor/etc/msm_irqb
     class core
     user root
     group root
-    writepid /dev/cpuset/system-background/tasks
 
 service fm_dl /vendor/bin/init.qti.fm.sh
     class late_start
@@ -834,6 +874,12 @@ service fm_dl /vendor/bin/init.qti.fm.sh
     group system
     disabled
     oneshot
+
+on property:hw.fm.init=0
+    write /sys/module/radio_iris_transport/parameters/fmsmd_set 0
+
+on property:hw.fm.init=1
+    write /sys/module/radio_iris_transport/parameters/fmsmd_set 1
 
 on property:crypto.driver.load=1
      insmod /vendor/lib/modules/qce.ko
@@ -875,7 +921,7 @@ on charger
 
 on property:sys.boot_completed=1
     write /dev/kmsg "Boot completed "
-    setprop sys.io.scheduler bfq
+    setprop sys.io.scheduler cfq
 
     # CPUset Settings
     write /dev/cpuset/background/cpus 0-3
@@ -884,21 +930,10 @@ on property:sys.boot_completed=1
     # Enable ZRAM on boot_complete
     swapon_all /system/vendor/etc/fstab.qcom
     # swapon /dev/block/zram0 -p 32758
-
-on property:ro.boot.ram=2GB
-    write /sys/block/zram0/disksize 536870912
     write /proc/sys/vm/swappiness 100
-
-on property:ro.boot.ram=3GB
-    write /sys/block/zram0/disksize 805306368
-    write /proc/sys/vm/swappiness 100
-
-on property:ro.boot.ram=4GB
-    write /sys/block/zram0/disksize 1073741824
-    write /proc/sys/vm/swappiness 50
 
     # scheduler settings
-    write /proc/sys/kernel/sched_window_stats_policy 3
+    write /proc/sys/kernel/sched_window_stats_policy 2
     write /proc/sys/kernel/sched_ravg_hist_size 3
 
     # task packing settings
@@ -939,7 +974,7 @@ on property:ro.boot.ram=4GB
     write /sys/class/devfreq/soc:qcom,cpubw/min_freq 1611
     write /sys/class/devfreq/soc:qcom,gpubw/bw_hwmon/io_percent 40
 
-    # disable thermal & BCL core_control to update schedutil gov settings
+    # disable thermal & BCL core_control to update interactive gov settings
     write /sys/module/msm_thermal/core_control/enabled 0
     write /sys/devices/soc/soc:qcom,bcl/mode "disable"
     write /sys/devices/soc/soc:qcom,bcl/hotplug_mask 0
@@ -948,17 +983,53 @@ on property:ro.boot.ram=4GB
 
     # governor settings
     write /sys/devices/system/cpu/cpu0/online 1
-    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor "schedutil"
+    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor "interactive"
+    write /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay "19000 1401600:39000"
+    write /sys/devices/system/cpu/cpufreq/interactive/go_hispeed_load 85
+    write /sys/devices/system/cpu/cpufreq/interactive/timer_rate 60000
+    write /sys/devices/system/cpu/cpufreq/interactive/timer_slack 480000
+    write /sys/devices/system/cpu/cpufreq/interactive/hispeed_freq 1401600
+    write /sys/devices/system/cpu/cpufreq/interactive/io_is_busy 0
+    write /sys/devices/system/cpu/cpufreq/interactive/target_loads "80 652800:57 1036800:67 1401600:75 1689600:80 1843200:85 1958400:87"
+    write /sys/devices/system/cpu/cpufreq/interactive/min_sample_time 39000
+    write /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay 0
+    write /sys/devices/system/cpu/cpufreq/interactive/min_sample_time 0
+    write /sys/devices/system/cpu/cpufreq/interactive/ignore_hispeed_on_notif 0
+    write /sys/devices/system/cpu/cpufreq/interactive/boost 0
+    write /sys/devices/system/cpu/cpufreq/interactive/fast_ramp_down 0
+    write /sys/devices/system/cpu/cpufreq/interactive/align_windows 1
+    write /sys/devices/system/cpu/cpufreq/interactive/use_migration_notif 1
+    write /sys/devices/system/cpu/cpufreq/interactive/enable_prediction 0
+    write /sys/devices/system/cpu/cpufreq/interactive/use_sched_load 0
+    write /sys/devices/system/cpu/cpufreq/interactive/max_freq_hysteresis 0
+    write /sys/devices/system/cpu/cpufreq/interactive/boostpulse_duration 0
     write /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq 652800
+    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2016000
 
-    write /sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us 1000
-    write /sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us 10000
-    write /sys/devices/system/cpu/cpufreq/schedutil/iowait_boost_enable 0
+    # GPU settings
+    chown system system /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/governor
+    chown system system /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/min_freq
+    chown system system /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/max_freq
+    chown system system /sys/class/kgsl/kgsl-3d0/max_gpuclk
+    chmod 0644 /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/governor
+    chmod 0644 /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/min_freq
+    chmod 0644 /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/max_freq
+    chmod 0644 /sys/class/kgsl/kgsl-3d0/max_gpuclk
+    write /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/governor "msm-adreno-tz"
+    write /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/min_freq 133000000
+    write /sys/devices/soc/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/max_freq 650000000
+    write /sys/class/kgsl/kgsl-3d0/max_gpuclk 650000000
 
-    # Enable input boost configuration
-    write /sys/module/cpu_boost/parameters/input_boost_freq "0:1036800"
-    write /sys/module/cpu_boost/parameters/dynamic_stune_boost 5
-    write /sys/module/cpu_boost/parameters/input_boost_ms 150
+    # CAF CPU Boost
+    chown system system /sys/module/cpu_boost/parameters/input_boost_enabled
+    chown system system /sys/module/cpu_boost/parameters/input_boost_freq
+    chown system system /sys/module/cpu_boost/parameters/input_boost_ms
+    chmod 0644 /sys/module/cpu_boost/parameters/input_boost_enabled
+    chmod 0644 /sys/module/cpu_boost/parameters/input_boost_freq
+    chmod 0644 /sys/module/cpu_boost/parameters/input_boost_ms
+    write /sys/module/cpu_boost/parameters/input_boost_enabled 1
+    write /sys/module/cpu_boost/parameters/input_boost_freq "0:1036800 1:1036800 2:1036800 3:1036800 4:1036800 5:1036800 6:1036800 7:1036800"
+    write /sys/module/cpu_boost/parameters/input_boost_ms 400
 
     # re-enable thermal & BCL core_control now
     write /sys/module/msm_thermal/core_control/enabled 1
@@ -990,20 +1061,15 @@ on property:ro.boot.ram=4GB
     write /proc/sys/kernel/sched_freq_inc_notify 200000
     write /proc/sys/kernel/sched_freq_dec_notify 200000
 
-    # set default schedTune value for foreground/top-app (only affects EAS)
-    write /dev/stune/foreground/schedtune.prefer_idle 1
-    write /dev/stune/top-app/schedtune.prefer_idle 1
-    write /dev/stune/top-app/schedtune.boost 1
-
     # Log kernel wake-up source
     write /sys/module/msm_show_resume_irq/parameters/debug_mask 1
 
     write /sys/module/process_reclaim/parameters/enable_process_reclaim 1
     write /sys/module/process_reclaim/parameters/pressure_max 70
-    write /sys/module/process_reclaim/parameters/swap_opt_eff 30
+    write /sys/module/process_reclaim/parameters/swap_opt_eff 50
     write /sys/module/process_reclaim/parameters/pressure_min 50
     write /sys/module/process_reclaim/parameters/per_swap_size 512
-    write /sys/module/lowmemorykiller/parameters/enable_adaptive_lmk 0
+    write /sys/module/lowmemorykiller/parameters/minfree "18432,23040,27648,32256,36864,46080"
 
     #Reset the "read ahead" setting for system patition
     # result: ext4: 32KB, dm_verity:64KB, block layer: 128KB
@@ -1029,7 +1095,3 @@ on property:ro.boot.ram=4GB
 on property:sys.boot_completed=1
     setprop vendor.post_boot.parsed 1
 
-on property:sys.boot_completed=1
-    # Tunables
-    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor "interactive"
-    write /sys/devices/system/cpu/cpufreq/interactive/use_sched_load 0
